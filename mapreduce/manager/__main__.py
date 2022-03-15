@@ -35,63 +35,59 @@ class Manager:
         }
         LOGGER.debug("TCP recv\n%s", json.dumps(message_dict, indent=2))
 
-        # TODO: you should remove this. This is just so the program doesn't
-        # exit immediately!
-        self.host=host
-        self.port=port
-        self.hb_port=hb_port
-        
-        
-        tmp=pathlib.Path(os.getcwd())/"tmp"
+        self.host = host
+        self.port = port
+        self.hb_port = hb_port
+
+        tmp = pathlib.Path(os.getcwd())/"tmp"
         tmp.mkdir(parents=True, exist_ok=True)
         tmp.glob("job-*")
-        
+
         udp = threading.Thread(target=udp_thread, args=(self.host, self.hb_port,))
         fault_tolerance = threading.Thread(target=fault_tolerance_thread)
         udp.start()
         fault_tolerance.start()
-        
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock: 
-            
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind((host, port))
             sock.listen()
-            
             sock.settimeout(1)
-            
+
         while True:
-            try: 
+            try:
                 clientsocket, address = sock.accept()
             except socket.timeout:
                 continue
             print("Connection from", address[0])
-            
+
             with clientsocket:
                 message_chunk = []
                 while True:
                     try:
-                        data=clientsocket.recv(4096)
+                        data = clientsocket.recv(4096)
                     except socket.timeout:
                         continue
                     if not data:
                         break
                     message_chunk.append(data)
-            
+
             message_bytes = b''.join(message_chunk)
             message_str = message_bytes.decode("utf-8")
-            print(message_str)
-        
-        
-        
-        
-        
-def udp_thread(self, host, hb_port):
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
 
+            try:
+                message_dict = json.loads(message_str)
+            except json.JSONDecodeError:
+                continue
+            print(message_dict)
+
+
+def udp_thread(host, hb_port):
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind((host, hb_port))
         sock.settimeout(1)
-        
+
         while True:
             try:
                 message_bytes = sock.recv(4096)
@@ -100,12 +96,9 @@ def udp_thread(self, host, hb_port):
             message_str = message_bytes.decode("utf-8")
             message_dict = json.loads(message_str)
             print(message_dict)
-        
+
 
 def fault_tolerance_thread(self):
-        
-        
-        
     pass
 
 
