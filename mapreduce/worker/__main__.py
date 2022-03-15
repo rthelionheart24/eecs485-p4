@@ -5,6 +5,7 @@ import logging
 import json
 import time
 import click
+import socket
 import mapreduce.utils
 
 
@@ -34,10 +35,44 @@ class Worker:
         }
         LOGGER.debug("TCP recv\n%s", json.dumps(message_dict, indent=2))
 
-        # TODO: you should remove this. This is just so the program doesn't
-        # exit immediately!
-        LOGGER.debug("IMPLEMENT ME!")
-        time.sleep(120)
+        self.host = host
+        self.port = port
+        self.manager_host = manager_host
+        self.manager_port = manager_port
+        self.manager_hb_port = manager_hb_port
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((host, port))
+            sock.listen()
+            sock.settimeout(1)
+
+        while True:
+            try:
+                clientsocket, address = sock.accept()
+            except socket.timeout:
+                continue
+            print("Connection from", address[0])
+
+            with clientsocket:
+                message_chunk = []
+                while True:
+                    try:
+                        data = clientsocket.recv(4096)
+                    except socket.timeout:
+                        continue
+                    if not data:
+                        break
+                    message_chunk.append(data)
+
+            message_bytes = b''.join(message_chunk)
+            message_str = message_bytes.decode("utf-8")
+
+            try:
+                message_dict = json.loads(message_str)
+            except json.JSONDecodeError:
+                continue
+            print(message_dict)
 
 
 @click.command()
