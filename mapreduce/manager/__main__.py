@@ -57,11 +57,10 @@ class Manager:
 
 
     def shutdown(self, message_dict):
-        shutdown_message = {"message_type": "shutdown"}
         for living_worker in self.living_workers:
             mapreduce.utils.send_message(living_worker["host"],
                                          living_worker["port"],
-                                         shutdown_message)
+                                         message_dict)
 
 
     def register(self, message_dict):
