@@ -9,13 +9,13 @@ import socket
 import threading
 import mapreduce.utils
 
-
 # Configure logging
 LOGGER = logging.getLogger(__name__)
 
 
 class Worker:
     """A class representing a worker node in a MapReduce cluster."""
+
     def __init__(self, host, port, manager_host, manager_port,
                  manager_hb_port):
         """Construct a Worker instance and start listening for messages."""
@@ -41,16 +41,17 @@ class Worker:
         self.manager_host = manager_host
         self.manager_port = manager_port
         self.manager_hb_port = manager_hb_port
+        self.dispatch = {
+            "register_ack": self.register_ack
+        }
 
         self.listen()
         self.register()
 
-
     def listen(self):
         tcp = threading.Thread(target=mapreduce.utils.tcp_listen,
-                               args=(self.host, self.port,))
+                               args=(self.host, self.port, self.dispatch, ))
         tcp.start()
-
 
     def register(self):
         registration_message = {
@@ -58,9 +59,13 @@ class Worker:
             "worker_host": self.host,
             "worker_port": self.port,
         }
-        mapreduce.utils.send_message_tcp(self.manager_host,
-                                         self.manager_port,
-                                         registration_message)
+        mapreduce.utils.send_message(self.manager_host,
+                                     self.manager_port,
+                                     registration_message)
+
+
+    def register_ack(self, message_dict):
+        pass
 
 
 @click.command()

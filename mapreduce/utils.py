@@ -7,19 +7,19 @@ import socket
 import json
 
 
-def tcp_listen(host, port):
+def tcp_listen(host, port, dispatch):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind((host, port))
         sock.listen()
         sock.settimeout(1)
+        message_type = ""
 
-        while True:
+        while message_type != "shutdown":
             try:
                 clientsocket, address = sock.accept()
             except socket.timeout:
                 continue
-            print("Connection from", address[0])
 
             with clientsocket:
                 message_chunks = []
@@ -39,7 +39,9 @@ def tcp_listen(host, port):
                 message_dict = json.loads(message_str)
             except json.JSONDecodeError:
                 continue
-            print(message_dict)
+            message_type = message_dict["message_type"]
+            if message_type in dispatch:
+                dispatch[message_type](message_dict)
 
 
 def udp_listen(host, port):
@@ -58,7 +60,7 @@ def udp_listen(host, port):
             print(message_dict)
 
 
-def send_message_tcp(host, port, message):
+def send_message(host, port, message):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.connect((host, port))
         message = json.dumps(message)

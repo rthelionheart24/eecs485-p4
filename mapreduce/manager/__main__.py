@@ -9,8 +9,7 @@ import click
 import pathlib
 import threading
 import socket
-
-from mapreduce.utils import tcp_listen, udp_listen
+import mapreduce.utils
 
 
 # Configure logging
@@ -39,13 +38,43 @@ class Manager:
         self.host = host
         self.port = port
         self.hb_port = hb_port
+        self.living_workers = []
+        self.dispatch = {
+            "shutdown": self.shutdown
+        }
 
         tmp = pathlib.Path(os.getcwd())/"tmp"
         tmp.mkdir(parents=True, exist_ok=True)
         tmp.glob("job-*")
 
-        tcp = threading.Thread(target=tcp_listen, args=(host, hb_port, ))
+        self.listen()
+
+
+    def listen(self):
+        tcp = threading.Thread(target=mapreduce.utils.tcp_listen,
+                               args=(self.host, self.port, self.dispatch, ))
         tcp.start()
+
+
+    def shutdown(self, message_dict):
+        shutdown_message = {"message_type": "shutdown"}
+        for living_worker in self.living_workers:
+            mapreduce.utils.send_message(living_worker["host"],
+                                         living_worker["port"],
+                                         shutdown_message)
+
+
+    def register(self, message_dict):
+        host, port = message_dict["worker_host"], message_dict["worker_port"]
+        self.living_workers.append({"host": host, "port": port})
+        register_acknowledgement = {
+            "message_type": "register_ack",
+            "worker_host": host,
+            "worker_port": port
+        }
+        mapreduce.utils.send_message(host, port, register_acknowledgement)
+        # TODO: Check the job queue to see if any work can be assigned once
+        #  the first worker registered
 
 
 def fault_tolerance_thread(self):
