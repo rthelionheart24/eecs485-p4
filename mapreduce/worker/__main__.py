@@ -6,6 +6,7 @@ import json
 import time
 import click
 import socket
+import threading
 import mapreduce.utils
 
 
@@ -41,38 +42,25 @@ class Worker:
         self.manager_port = manager_port
         self.manager_hb_port = manager_hb_port
 
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.bind((host, port))
-            sock.listen()
-            sock.settimeout(1)
+        self.listen()
+        self.register()
 
-        while True:
-            try:
-                clientsocket, address = sock.accept()
-            except socket.timeout:
-                continue
-            print("Connection from", address[0])
 
-            with clientsocket:
-                message_chunk = []
-                while True:
-                    try:
-                        data = clientsocket.recv(4096)
-                    except socket.timeout:
-                        continue
-                    if not data:
-                        break
-                    message_chunk.append(data)
+    def listen(self):
+        tcp = threading.Thread(target=mapreduce.utils.tcp_listen,
+                               args=(self.host, self.port,))
+        tcp.start()
 
-            message_bytes = b''.join(message_chunk)
-            message_str = message_bytes.decode("utf-8")
 
-            try:
-                message_dict = json.loads(message_str)
-            except json.JSONDecodeError:
-                continue
-            print(message_dict)
+    def register(self):
+        registration_message = {
+            "message_type": "register",
+            "worker_host": self.host,
+            "worker_port": self.port,
+        }
+        mapreduce.utils.send_message_tcp(self.manager_host,
+                                         self.manager_port,
+                                         registration_message)
 
 
 @click.command()
