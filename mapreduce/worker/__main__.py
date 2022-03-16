@@ -16,7 +16,8 @@ LOGGER = logging.getLogger(__name__)
 class Worker:
     """A class representing a worker node in a MapReduce cluster."""
 
-    def __init__(self, host, port, manager_host, manager_port, manager_hb_port):
+    def __init__(self, host, port, manager_host, manager_port,
+                 manager_hb_port):
         """Construct a Worker instance and start listening for messages."""
         LOGGER.info(
             "Starting worker host=%s port=%s pwd=%s",
@@ -44,7 +45,11 @@ class Worker:
         self.manager_host = manager_host
         self.manager_port = manager_port
         self.manager_hb_port = manager_hb_port
-        self.dispatch = {"register_ack": self.register_ack}
+        self.shutdown_signal = False
+        self.dispatch = {
+            "register_ack": self.register_ack,
+            "shutdown": self.shutdown
+        }
 
         self.listen()
         self.register()
@@ -70,20 +75,27 @@ class Worker:
             self.manager_host, self.manager_port, registration_message
         )
 
+    def shutdown(self, message_dict):
+        self.shutdown_signal = True
+
     def register_ack(self, message_dict):
-        def send_heartbeat():
-            while True:
-                message_dict = {
+        def send_heartbeat(worker_host, worker_port,
+                           manager_host, manager_port):
+            while not self.shutdown_signal:
+                message = {
                     "message_type": "heartbeat",
-                    "worker_host": self.host,
-                    "worker_port": self.port,
+                    "worker_host": worker_host,
+                    "worker_port": worker_port,
                 }
-                mapreduce.utils.send_message(
-                    self.manager_host, self.manager_hb_port, message_dict
+                mapreduce.utils.udp_send_message(
+                    manager_host, manager_port, message
                 )
                 time.sleep(2)
 
-        heartbeat = threading.Thread(target=send_heartbeat)
+        heartbeat = threading.Thread(target=send_heartbeat,
+                                     args=(self.host, self.port,
+                                           self.manager_host,
+                                           self.manager_hb_port,))
         heartbeat.start()
 
 

@@ -5,6 +5,7 @@ This file is to house code common between the Manager and the Worker
 """
 import socket
 import json
+import time
 
 
 def tcp_listen(host, port, dispatch):
@@ -39,20 +40,28 @@ def tcp_listen(host, port, dispatch):
                 message_dict = json.loads(message_str)
             except json.JSONDecodeError:
                 continue
+            print("message from", address[0], ": ", message_dict[
+                "message_type"])
             message_type = message_dict["message_type"]
             if message_type in dispatch:
                 dispatch[message_type](message_dict)
 
 
-def udp_listen(host, port):
+def udp_listen(host, port, signals):
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+
+        # Bind the UDP socket to the server
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind((host, port))
         sock.settimeout(1)
 
-        while True:
+        # No sock.listen() since UDP doesn't establish connections like TCP
+
+        # Receive incoming UDP messages
+        while not signals['shutdown']:
             try:
                 message_bytes = sock.recv(4096)
+                print(message_bytes)
             except socket.timeout:
                 continue
             message_str = message_bytes.decode("utf-8")
@@ -62,6 +71,13 @@ def udp_listen(host, port):
 
 def send_message(host, port, message):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.connect((host, port))
+        message = json.dumps(message)
+        sock.sendall(message.encode('utf-8'))
+
+
+def udp_send_message(host, port, message):
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.connect((host, port))
         message = json.dumps(message)
         sock.sendall(message.encode('utf-8'))

@@ -11,7 +11,6 @@ import threading
 import socket
 import mapreduce.utils
 
-
 # Configure logging
 LOGGER = logging.getLogger(__name__)
 
@@ -39,29 +38,32 @@ class Manager:
         self.port = port
         self.hb_port = hb_port
         self.living_workers = []
+        self.signals = {'shutdown': False}
         self.dispatch = {
-            "shutdown": self.shutdown
+            "shutdown": self.shutdown,
+            "register": self.register
         }
 
-        tmp = pathlib.Path(os.getcwd())/"tmp"
+        tmp = pathlib.Path(os.getcwd()) / "tmp"
         tmp.mkdir(parents=True, exist_ok=True)
         tmp.glob("job-*")
 
         self.listen()
 
-
     def listen(self):
         tcp = threading.Thread(target=mapreduce.utils.tcp_listen,
-                               args=(self.host, self.port, self.dispatch, ))
+                               args=(self.host, self.port, self.dispatch,))
+        udp = threading.Thread(target=mapreduce.utils.udp_listen,
+                               args=(self.host, self.hb_port, self.signals,))
         tcp.start()
-
+        udp.start()
 
     def shutdown(self, message_dict):
         for living_worker in self.living_workers:
             mapreduce.utils.send_message(living_worker["host"],
                                          living_worker["port"],
                                          message_dict)
-
+        self.signals['shutdown'] = True
 
     def register(self, message_dict):
         host, port = message_dict["worker_host"], message_dict["worker_port"]
