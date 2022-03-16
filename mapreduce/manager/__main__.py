@@ -60,9 +60,9 @@ class Manager:
 
     def shutdown(self, message_dict):
         for living_worker in self.living_workers:
-            mapreduce.utils.send_message(living_worker["host"],
-                                         living_worker["port"],
-                                         message_dict)
+            mapreduce.utils.tcp_send_message(living_worker["host"],
+                                             living_worker["port"],
+                                             message_dict)
         self.signals['shutdown'] = True
 
     def register(self, message_dict):
@@ -73,7 +73,7 @@ class Manager:
             "worker_host": host,
             "worker_port": port
         }
-        mapreduce.utils.send_message(host, port, register_acknowledgement)
+        mapreduce.utils.tcp_send_message(host, port, register_acknowledgement)
         # TODO: Check the job queue to see if any work can be assigned once
         #  the first worker registered
 

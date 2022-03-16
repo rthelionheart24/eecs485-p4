@@ -71,7 +71,7 @@ class Worker:
             "worker_host": self.host,
             "worker_port": self.port,
         }
-        mapreduce.utils.send_message(
+        mapreduce.utils.tcp_send_message(
             self.manager_host, self.manager_port, registration_message
         )
 

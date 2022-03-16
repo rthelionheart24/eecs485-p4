@@ -69,7 +69,7 @@ def udp_listen(host, port, signals):
             print(message_dict)
 
 
-def send_message(host, port, message):
+def tcp_send_message(host, port, message):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.connect((host, port))
         message = json.dumps(message)
