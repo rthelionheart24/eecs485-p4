@@ -100,3 +100,44 @@ class MapTask:
             f"output_directory={repr(self.output_directory)}"
             ")"
         )
+
+class ReduceTask:
+    """Represent one map task."""
+    
+    def __init__(self, input_files, executable, output_directory):
+        self.input_files = input_files
+        self.executable = executable
+        self.output_directory = output_directory
+
+    def __repr__(self):
+        """Return a string representation of the object."""
+        return (
+            "MapTask("
+            f"input_files={repr(self.input_files)}, "
+            f"executable={repr(self.executable)}, "
+            f"output_directory={repr(self.output_directory)}"
+            ")"
+        )
+
+class ManagerTask:
+    def __init__(self, input_directory, output_directory, mapper_executable, reducer_executable, num_mappers, num_reducers):
+        self.input_directory = input_directory
+        self.output_directory = output_directory
+        self.mapper_executable = mapper_executable
+        self.reducer_executable = reducer_executable
+        self.num_mappers = num_mappers
+        self.num_reducers = num_reducers
+        self.finished = False
+
+    def __repr__(self):
+        """Return a string representation of the object."""
+        return (
+            "MapTask("
+            f"input_files={repr(self.input_files)}, "
+            f"output_directory={repr(self.output_directory)}"
+            f"mapper_executable={repr(self.mapper_executable)}, "
+            f"reducer_executable={repr(self.reducer_executable)}"
+            f"num_mappers={repr(self.num_mappers)}, "
+            f"num_reducer={repr(self.num_reducers)}"
+            ")"
+        )
