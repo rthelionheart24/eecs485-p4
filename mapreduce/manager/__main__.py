@@ -1,15 +1,14 @@
 """MapReduce framework Manager node."""
-from email import message
-import sys
-import os
-import logging
 import json
-import time
-import click
+import logging
+import os
 import pathlib
+import sys
 import threading
-import socket
 from queue import Queue
+
+import click
+
 import mapreduce.utils
 
 # Configure logging
@@ -80,7 +79,8 @@ class Manager:
         udp.start()
 
     def shutdown(self, message_dict):
-        for worker in [worker for worker in self.workers if worker["state"] != "dead"]:
+        for worker in [worker for worker in self.workers if
+                       worker["state"] != "dead"]:
             mapreduce.utils.tcp_send_message(
                 worker["host"], worker["port"], message_dict
             )
@@ -99,7 +99,8 @@ class Manager:
         #  the first worker registered
 
     def get_ready_workers(self):
-        return [worker for worker in self.workers if worker["state"] == "ready"]
+        return [worker for worker in self.workers if
+                worker["state"] == "ready"]
 
     # TODO assign work to workers
     def assign_work(self):
@@ -119,17 +120,16 @@ class Manager:
         if self.get_ready_workers() and self.is_free:
             self.assign_work()
         else:
-          self.job_queue.put(
-              mapreduce.utils.ManagerTask(
-                  input_directory,
-                  output_directory,
-                  mapper_executable,
-                  reducer_executable,
-                  num_mappers,
-                  num_reducers,
-              )
-          )
-
+            self.job_queue.put(
+                mapreduce.utils.ManagerTask(
+                    input_directory,
+                    output_directory,
+                    mapper_executable,
+                    reducer_executable,
+                    num_mappers,
+                    num_reducers,
+                )
+            )
 
 
 def fault_tolerance_thread(self):
@@ -143,7 +143,8 @@ def fault_tolerance_thread(self):
 def main(host, port, hb_port):
     """Run Manager."""
     handler = logging.StreamHandler(sys.stdout)
-    formatter = logging.Formatter(f"Manager:{port} [%(levelname)s] %(message)s")
+    formatter = logging.Formatter(
+        f"Manager:{port} [%(levelname)s] %(message)s")
     handler.setFormatter(formatter)
     root_logger = logging.getLogger()
     root_logger.addHandler(handler)

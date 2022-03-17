@@ -1,12 +1,13 @@
 """MapReduce framework Worker node."""
-import sys
-import os
-import logging
 import json
-import time
-import click
-import socket
+import logging
+import os
+import sys
 import threading
+import time
+
+import click
+
 import mapreduce.utils
 
 # Configure logging

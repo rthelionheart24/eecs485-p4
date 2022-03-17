@@ -3,9 +3,8 @@
 This file is to house code common between the Manager and the Worker
 
 """
-import socket
 import json
-import time
+import socket
 
 
 def tcp_listen(host, port, dispatch):
@@ -101,9 +100,10 @@ class MapTask:
             ")"
         )
 
+
 class ReduceTask:
     """Represent one map task."""
-    
+
     def __init__(self, input_files, executable, output_directory):
         self.input_files = input_files
         self.executable = executable
@@ -119,8 +119,10 @@ class ReduceTask:
             ")"
         )
 
+
 class ManagerTask:
-    def __init__(self, input_directory, output_directory, mapper_executable, reducer_executable, num_mappers, num_reducers):
+    def __init__(self, input_directory, output_directory, mapper_executable,
+                 reducer_executable, num_mappers, num_reducers):
         self.input_directory = input_directory
         self.output_directory = output_directory
         self.mapper_executable = mapper_executable
