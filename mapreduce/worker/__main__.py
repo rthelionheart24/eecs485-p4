@@ -10,6 +10,8 @@ import click
 
 import mapreduce.utils
 
+import hashlib
+
 # Configure logging
 LOGGER = logging.getLogger(__name__)
 
@@ -98,6 +100,12 @@ class Worker:
                                            self.manager_host,
                                            self.manager_hb_port,))
         heartbeat.start()
+        
+    def map(self, message_dict):
+        
+    
+    def reduce(self, message_dict):
+        pass
 
 
 @click.command()

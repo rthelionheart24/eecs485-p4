@@ -45,7 +45,8 @@ class Manager:
         self.job_counter = 0
         self.job_queue = Queue()
         self.workers = []
-        self.remaining_partitions = []
+        self.is_free = True
+        self.remaining_messages = []
         self.signals = {"shutdown": False}
         self.dispatch = {
             "shutdown": self.shutdown,
@@ -104,6 +105,7 @@ class Manager:
     # TODO assign work to workers
     def assign_task(self, manager_task):
         workers = self.get_ready_workers()
+
         # Scan and sort the input directory by name
         files = []
         for entry in os.scandir(manager_task.input_directory):
@@ -112,36 +114,39 @@ class Manager:
         files.sort()
         num_mappers = manager_task.num_mappers
         partitions = [files[i::num_mappers] for i in range(num_mappers)]
-        
+
         # For each partition, construct a message and send to workers using TCP
-        
         # When there are more files than workers, we give each worker a job and reserve the remaining
-        if len(worker) < len(partitions):
-            self.remaining_partitions = partitions[len(worker):]
-            
+        if len(workers) < len(partitions):
+            remaining_partitions = partitions[len(workers) :]
+        self.remaining_messages = []
+
         # Assign each worker a job
-        for i, worker in enumerate(workers):
-            worker_host, worker_port = workers[i]["host"], workers[i]["port"]
-            if i < len(partitions):
-                message = {
-                    "message_type": "new_map_task",
-                    "task_id": i,
-                    "input_paths": [manager_task.input_directory / job for job 
-                                    in partitions[i]],
-                    "executable": manager_task.mapper_executable,
-                    "output_directory": manager_task.output_directory,
-                    "num_partitions": manager_task.num_reducers,
-                    "worker_host": worker_host,
-                    "worker_port": worker_port
-                }
+        for i, partition in enumerate(partitions):
+            wi = i if i < len(workers) else 0
+            worker_host, worker_port = workers[wi]["host"], workers[wi]["port"]
+            message = {
+                "message_type": "new_map_task",
+                "task_id": i,
+                "input_paths": [
+                    manager_task.input_directory / job for job in partitions[i]
+                ],
+                "executable": manager_task.mapper_executable,
+                "output_directory": manager_task.output_directory,
+                "num_partitions": manager_task.num_reducers,
+                "worker_host": worker_host,
+                "worker_port": worker_port,
+            }
+            if i < len(workers):
                 mapreduce.utils.tcp_send_message(worker_host, worker_port, message)
                 self.change_worker_state(worker_host, worker_port, "busy")
-                
+            else:
+                self.remaining_messages.append(message)
+
         # Log map stage starts
         LOGGER.info("Manager:%s begin map stage", self.port)
-            
-        #TODO Log the when the mapping stage ends
-        
+        self.is_free = False
+
     def change_worker_state(self, worker_host, worker_port, new_state):
         for worker in self.workers:
             if worker["host"] == worker_host and worker["port"] == worker_port:
@@ -149,15 +154,25 @@ class Manager:
                 return
 
     def finished(self, message_dict):
-        self.change_worker_state(message_dict["worker_host"], message_dict["worker_port"], "ready")
+        self.change_worker_state(
+            message_dict["worker_host"], message_dict["worker_port"], "ready"
+        )
         # If there are partitions left
         if len(self.remaining_partitions) > 0:
-            
+            message = self.remaining_partitions.pop(0)
+            worker_host, worker_port = (
+                message_dict["worker_host"],
+                message_dict["worker_port"],
+            )
+            message["worker_host"] = worker_host
+            message["worker_port"] = worker_port
+            mapreduce.utils.tcp_send_message(worker_host, worker_port, message)
+            self.change_worker_state(worker_host, worker_port, "busy")
         # Else
         else:
+            LOGGER.info("Manager:%s end map stage", self.port)
             
-        
-        
+            # TODO: start reduce stage
 
     def new_manager_job(self, message_dict):
         input_directory = message_dict["input_directory"]
@@ -179,6 +194,7 @@ class Manager:
             num_reducers,
         )
         if self.get_ready_workers() and self.is_free:
+            self.is_free = False
             self.assign_task(manager_task)
         else:
             self.job_queue.put(manager_task)
