@@ -57,7 +57,7 @@ def udp_listen(host, port, signals):
         # No sock.listen() since UDP doesn't establish connections like TCP
 
         # Receive incoming UDP messages
-        while not signals['shutdown']:
+        while not signals["shutdown"]:
             try:
                 message_bytes = sock.recv(4096)
                 print(message_bytes)

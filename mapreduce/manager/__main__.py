@@ -52,6 +52,7 @@ class Manager:
             "shutdown": self.shutdown,
             "register": self.register,
             "new_manager_job": self.new_manager_job,
+            "finished": self.finished
         }
         self.tmp = pathlib.Path(os.getcwd()) / "tmp"
 
@@ -86,6 +87,7 @@ class Manager:
                 worker["host"], worker["port"], message_dict
             )
         self.signals["shutdown"] = True
+        LOGGER.info("Initiate Shutdown")
 
     def register(self, message_dict):
         host, port = message_dict["worker_host"], message_dict["worker_port"]
@@ -115,8 +117,9 @@ class Manager:
         num_mappers = manager_task.num_mappers
         partitions = [files[i::num_mappers] for i in range(num_mappers)]
 
-        # For each partition, construct a message and send to workers using TCP
-        # When there are more files than workers, we give each worker a job and reserve the remaining
+        # For each partition, construct a message and send to workers using
+        # TCP When there are more files than workers, we give each worker a
+        # job and reserve the remaining
         if len(workers) < len(partitions):
             remaining_partitions = partitions[len(workers) :]
         self.remaining_messages = []
@@ -129,7 +132,8 @@ class Manager:
                 "message_type": "new_map_task",
                 "task_id": i,
                 "input_paths": [
-                    manager_task.input_directory / job for job in partitions[i]
+                    f"{manager_task.input_directory}/{job}" for job in
+                    partitions[i]
                 ],
                 "executable": manager_task.mapper_executable,
                 "output_directory": manager_task.output_directory,
@@ -170,7 +174,7 @@ class Manager:
             self.change_worker_state(worker_host, worker_port, "busy")
         # Else
         else:
-            LOGGER.info("Manager:%s end map stage", self.port)
+            LOGGER.debug("Manager:%s end map stage", self.port)
             
             # TODO: start reduce stage
 
