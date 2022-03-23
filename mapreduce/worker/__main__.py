@@ -11,6 +11,7 @@ import click
 import mapreduce.utils
 
 import hashlib
+import subprocess
 
 # Configure logging
 LOGGER = logging.getLogger(__name__)
@@ -19,8 +20,7 @@ LOGGER = logging.getLogger(__name__)
 class Worker:
     """A class representing a worker node in a MapReduce cluster."""
 
-    def __init__(self, host, port, manager_host, manager_port,
-                 manager_hb_port):
+    def __init__(self, host, port, manager_host, manager_port, manager_hb_port):
         """Construct a Worker instance and start listening for messages."""
         LOGGER.info(
             "Starting worker host=%s port=%s pwd=%s",
@@ -51,7 +51,8 @@ class Worker:
         self.shutdown_signal = False
         self.dispatch = {
             "register_ack": self.register_ack,
-            "shutdown": self.shutdown
+            "shutdown": self.shutdown,
+            "new_map_task": self.map,
         }
 
         self.listen()
@@ -82,24 +83,67 @@ class Worker:
         self.shutdown_signal = True
 
     def register_ack(self, message_dict):
-        def send_heartbeat(worker_host, worker_port,
-                           manager_host, manager_port):
+        def send_heartbeat(worker_host, worker_port, manager_host, manager_port):
             while not self.shutdown_signal:
                 message = {
                     "message_type": "heartbeat",
                     "worker_host": worker_host,
                     "worker_port": worker_port,
                 }
-                mapreduce.utils.udp_send_message(
-                    manager_host, manager_port, message
-                )
+                mapreduce.utils.udp_send_message(manager_host, manager_port, message)
                 time.sleep(2)
 
-        heartbeat = threading.Thread(target=send_heartbeat,
-                                     args=(self.host, self.port,
-                                           self.manager_host,
-                                           self.manager_hb_port,))
+        heartbeat = threading.Thread(
+            target=send_heartbeat,
+            args=(
+                self.host,
+                self.port,
+                self.manager_host,
+                self.manager_hb_port,
+            ),
+        )
         heartbeat.start()
+
+    def map(self, message_dict):
+        task_id = message_dict["task_id"]
+        output_paths = []
+        for input_path in message_dict["input_paths"]:
+            with open(input_path) as infile:
+                with subprocess.Popen(
+                    message_dict["executable"],
+                    stdin=infile,
+                    stdout=subprocess.PIPE,
+                    universal_newlines=True,
+                ) as map_process:
+                    for line in map_process.stdout:
+                        # Add line to correct partition output file
+                        key, value = line.split(" ")  # [key, value]
+                        hexdigest = hashlib.md5(key.encode("utf-8")).hexdigest()
+                        keyhash = int(hexdigest, base=16)
+                        partition = keyhash % message_dict["num_partitions"]
+                        intermediate_file_name = (
+                            message_dict["output_directory"]
+                            / f"maptask{task_id:05}-part{partition:05}"
+                        )
+                        if intermediate_file_name not in output_paths:
+                            output_paths.append(intermediate_file_name)
+                        hexdigest = hashlib.mke.encode
+                        with open(intermediate_file_name, "a") as f:
+                            f.write(f"{value}\n")
+
+        message = {
+            "message_type": "finished",
+            "task_id": task_id,
+            "output_paths": output_paths,
+            "worker_host": self.host,
+            "worker_port": self.port,
+        }
+        mapreduce.utils.tcp_send_message(
+            message_dict["worker_host"], message_dict["worker_port"], message
+        )
+
+    def reduce():
+        pass
 
 
 @click.command()
