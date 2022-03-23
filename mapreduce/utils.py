@@ -60,12 +60,12 @@ def udp_listen(host, port, signals):
         while not signals["shutdown"]:
             try:
                 message_bytes = sock.recv(4096)
-                print(message_bytes)
+                # print(message_bytes)
             except socket.timeout:
                 continue
             message_str = message_bytes.decode("utf-8")
             message_dict = json.loads(message_str)
-            print(message_dict)
+            # print(message_dict)
 
 
 def tcp_send_message(host, port, message):
@@ -121,10 +121,12 @@ class ReduceTask:
 
 
 class ManagerTask:
-    def __init__(self, input_directory, output_directory, mapper_executable,
+    def __init__(self, input_directory, output_directory,
+                 intermediate_directory, mapper_executable,
                  reducer_executable, num_mappers, num_reducers):
         self.input_directory = input_directory
         self.output_directory = output_directory
+        self.intermediate_directory = intermediate_directory
         self.mapper_executable = mapper_executable
         self.reducer_executable = reducer_executable
         self.num_mappers = num_mappers

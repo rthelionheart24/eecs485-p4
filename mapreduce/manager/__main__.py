@@ -41,7 +41,6 @@ class Manager:
         self.host = host
         self.port = port
         self.hb_port = hb_port
-        self.is_busy = False
         self.job_counter = 0
         self.job_queue = Queue()
         self.workers = []
@@ -54,7 +53,7 @@ class Manager:
             "new_manager_job": self.new_manager_job,
             "finished": self.finished
         }
-        self.tmp = pathlib.Path(os.getcwd()) / "tmp"
+        self.tmp = pathlib.Path("tmp")
 
         # Initialize Manager
         self.tmp.mkdir(parents=True, exist_ok=True)
@@ -82,7 +81,8 @@ class Manager:
         udp.start()
 
     def shutdown(self, message_dict):
-        for worker in [worker for worker in self.workers if worker["state"] != "dead"]:
+        for worker in [worker for worker in self.workers if
+                       worker["state"] != "dead"]:
             mapreduce.utils.tcp_send_message(
                 worker["host"], worker["port"], message_dict
             )
@@ -120,8 +120,6 @@ class Manager:
         # For each partition, construct a message and send to workers using
         # TCP When there are more files than workers, we give each worker a
         # job and reserve the remaining
-        if len(workers) < len(partitions):
-            remaining_partitions = partitions[len(workers) :]
         self.remaining_messages = []
 
         # Assign each worker a job
@@ -136,17 +134,17 @@ class Manager:
                     partitions[i]
                 ],
                 "executable": manager_task.mapper_executable,
-                "output_directory": manager_task.output_directory,
+                "output_directory": str(manager_task.intermediate_directory),
                 "num_partitions": manager_task.num_reducers,
                 "worker_host": worker_host,
                 "worker_port": worker_port,
             }
             if i < len(workers):
-                mapreduce.utils.tcp_send_message(worker_host, worker_port, message)
+                mapreduce.utils.tcp_send_message(worker_host, worker_port,
+                                                 message)
                 self.change_worker_state(worker_host, worker_port, "busy")
             else:
                 self.remaining_messages.append(message)
-
         # Log map stage starts
         LOGGER.info("Manager:%s begin map stage", self.port)
         self.is_free = False
@@ -162,8 +160,8 @@ class Manager:
             message_dict["worker_host"], message_dict["worker_port"], "ready"
         )
         # If there are partitions left
-        if len(self.remaining_partitions) > 0:
-            message = self.remaining_partitions.pop(0)
+        if len(self.remaining_messages) > 0:
+            message = self.remaining_messages.pop(0)
             worker_host, worker_port = (
                 message_dict["worker_host"],
                 message_dict["worker_port"],
@@ -174,8 +172,8 @@ class Manager:
             self.change_worker_state(worker_host, worker_port, "busy")
         # Else
         else:
-            LOGGER.debug("Manager:%s end map stage", self.port)
-            
+            LOGGER.info("Manager:%s end map stage", self.port)
+
             # TODO: start reduce stage
 
     def new_manager_job(self, message_dict):
@@ -185,13 +183,16 @@ class Manager:
         reducer_executable = message_dict["reducer_executable"]
         num_mappers = message_dict["num_mappers"]
         num_reducers = message_dict["num_reducers"]
-        temp_intermediate_dir = self.tmp / f"job-{self.job_counter}" / "intermediate"
+        temp_intermediate_dir = \
+            self.tmp / f"job-{self.job_counter}" / "intermediate"
         temp_intermediate_dir.mkdir(parents=True, exist_ok=True)
         self.job_counter += 1
 
         manager_task = mapreduce.utils.ManagerTask(
             input_directory,
+            # TODO: what is the output directory here?
             output_directory,
+            temp_intermediate_dir,
             mapper_executable,
             reducer_executable,
             num_mappers,
@@ -215,7 +216,8 @@ def fault_tolerance_thread(self):
 def main(host, port, hb_port):
     """Run Manager."""
     handler = logging.StreamHandler(sys.stdout)
-    formatter = logging.Formatter(f"Manager:{port} [%(levelname)s] %(message)s")
+    formatter = logging.Formatter(
+        f"Manager:{port} [%(levelname)s] %(message)s")
     handler.setFormatter(formatter)
     root_logger = logging.getLogger()
     root_logger.addHandler(handler)
