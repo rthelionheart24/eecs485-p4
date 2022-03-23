@@ -117,19 +117,20 @@ class Worker:
                 ) as map_process:
                     for line in map_process.stdout:
                         # Add line to correct partition output file
-                        key, value = line.split(" ")  # [key, value]
+                        key_value = line.split(" ")
+                        key = key_value[0]  # [key, value]
+                        value = key_value[-1]
                         hexdigest = hashlib.md5(key.encode("utf-8")).hexdigest()
                         keyhash = int(hexdigest, base=16)
                         partition = keyhash % message_dict["num_partitions"]
                         intermediate_file_name = (
-                            message_dict["output_directory"]
-                            / f"maptask{task_id:05}-part{partition:05}"
+                            f"{message_dict['output_directory']}/maptask"
+                            f"{task_id:05}-part{partition:05}"
                         )
                         if intermediate_file_name not in output_paths:
                             output_paths.append(intermediate_file_name)
-                        hexdigest = hashlib.mke.encode
                         with open(intermediate_file_name, "a") as f:
-                            f.write(f"{value}\n")
+                            f.write(f"{value}")
 
         message = {
             "message_type": "finished",
