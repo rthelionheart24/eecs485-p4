@@ -1,4 +1,5 @@
 """MapReduce framework Worker node."""
+import heapq
 import json
 import logging
 import os
@@ -53,10 +54,13 @@ class Worker:
             "register_ack": self.register_ack,
             "shutdown": self.shutdown,
             "new_map_task": self.map,
+            "new_reduce_task": self.reduce
         }
 
         self.listen()
         self.register()
+        while not self.shutdown_signal:
+            time.sleep(1)
 
     def listen(self):
         tcp = threading.Thread(
@@ -117,9 +121,8 @@ class Worker:
                 ) as map_process:
                     for line in map_process.stdout:
                         # Add line to correct partition output file
-                        key_value = line.split(" ")
+                        key_value = line.split("\t")
                         key = key_value[0]  # [key, value]
-                        value = key_value[-1]
                         hexdigest = hashlib.md5(key.encode("utf-8")).hexdigest()
                         keyhash = int(hexdigest, base=16)
                         partition = keyhash % message_dict["num_partitions"]
@@ -130,8 +133,38 @@ class Worker:
                         if intermediate_file_name not in output_paths:
                             output_paths.append(intermediate_file_name)
                         with open(intermediate_file_name, "a") as f:
-                            f.write(f"{value}")
+                            f.write(line)
+        self.send_finished_message(task_id, sorted(output_paths))
 
+    def reduce(self, message_dict):
+        # Sort each input file by line
+        for input_path in message_dict["input_paths"]:
+            with open(input_path, "r") as r:
+                data = sorted(r.readlines())
+            with open(input_path, "w") as w:
+                w.writelines(data)
+        files = [open(_) for _ in message_dict["input_paths"]]
+        infile = heapq.merge(*files)
+        task_id = message_dict["task_id"]
+        output_path = (
+            f"{message_dict['output_directory']}/"
+            f"part-{task_id:05}"
+        )
+        # Run the reduce executable on each line of input across all files,
+        # sorted by line, and write all output to a single file.
+        with open(output_path, "a") as outfile:
+            with subprocess.Popen(
+                    message_dict["executable"],
+                    universal_newlines=True,
+                    stdin=subprocess.PIPE,
+                    stdout=outfile,
+            ) as reduce_process:
+                # Pipe input to reduce_process
+                for line in infile:
+                    reduce_process.stdin.write(line)
+        self.send_finished_message(task_id, [output_path])
+
+    def send_finished_message(self, task_id, output_paths):
         message = {
             "message_type": "finished",
             "task_id": task_id,
@@ -140,11 +173,8 @@ class Worker:
             "worker_port": self.port,
         }
         mapreduce.utils.tcp_send_message(
-            message_dict["worker_host"], message_dict["worker_port"], message
+            self.manager_host, self.manager_port, message
         )
-
-    def reduce():
-        pass
 
 
 @click.command()

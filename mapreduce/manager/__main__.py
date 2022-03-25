@@ -5,6 +5,7 @@ import os
 import pathlib
 import sys
 import threading
+import time
 from queue import Queue
 
 import click
@@ -44,8 +45,9 @@ class Manager:
         self.job_counter = 0
         self.job_queue = Queue()
         self.workers = []
-        self.is_free = True
+        self.state = "free"
         self.remaining_messages = []
+        self.num_messages_left = None
         self.signals = {"shutdown": False}
         self.dispatch = {
             "shutdown": self.shutdown,
@@ -53,12 +55,17 @@ class Manager:
             "new_manager_job": self.new_manager_job,
             "finished": self.finished
         }
+        self.udp_dispatch = {"heartbeat": self.heartbeat}
         self.tmp = pathlib.Path("tmp")
+        self.current_task = None
+        self.reduce_input_paths = []
 
         # Initialize Manager
         self.tmp.mkdir(parents=True, exist_ok=True)
         self.tmp.glob("job-*")
         self.listen()
+        while not self.signals["shutdown"]:
+            time.sleep(1)
 
     def listen(self):
         tcp = threading.Thread(
@@ -66,7 +73,7 @@ class Manager:
             args=(
                 self.host,
                 self.port,
-                self.dispatch,
+                self.dispatch
             ),
         )
         udp = threading.Thread(
@@ -74,15 +81,19 @@ class Manager:
             args=(
                 self.host,
                 self.hb_port,
-                self.signals,
+                self.udp_dispatch,
+                self.signals
             ),
+        )
+        fault_tolerance = threading.Thread(
+            target=self.fault_tolerance_thread,
         )
         tcp.start()
         udp.start()
+        fault_tolerance.start()
 
     def shutdown(self, message_dict):
-        for worker in [worker for worker in self.workers if
-                       worker["state"] != "dead"]:
+        for worker in self.get_living_workers():
             mapreduce.utils.tcp_send_message(
                 worker["host"], worker["port"], message_dict
             )
@@ -91,21 +102,28 @@ class Manager:
 
     def register(self, message_dict):
         host, port = message_dict["worker_host"], message_dict["worker_port"]
-        self.workers.append({"host": host, "port": port, "state": "ready"})
+        self.workers.append({"host": host,
+                             "port": port,
+                             "state": "ready",
+                             "message": "",
+                             "time_since_last_beat": 0})
         register_acknowledgement = {
             "message_type": "register_ack",
             "worker_host": host,
             "worker_port": port,
         }
         mapreduce.utils.tcp_send_message(host, port, register_acknowledgement)
-        # TODO: Check the job queue to see if any work can be assigned once
-        #  the first worker registered
+        if not self.job_queue.empty() and len(self.workers) == 1:
+            self.state = "map"
+            self.assign_mapper_task(self.job_queue.get())
 
     def get_ready_workers(self):
         return [w for w in self.workers if w["state"] == "ready"]
 
-    # TODO assign work to workers
-    def assign_task(self, manager_task):
+    def get_living_workers(self):
+        return [w for w in self.workers if w["state"] != "dead"]
+
+    def assign_mapper_task(self, manager_task):
         workers = self.get_ready_workers()
 
         # Scan and sort the input directory by name
@@ -121,7 +139,7 @@ class Manager:
         # TCP When there are more files than workers, we give each worker a
         # job and reserve the remaining
         self.remaining_messages = []
-
+        self.num_messages_left = len(partitions)
         # Assign each worker a job
         for i, partition in enumerate(partitions):
             wi = i if i < len(workers) else 0
@@ -143,22 +161,61 @@ class Manager:
                 mapreduce.utils.tcp_send_message(worker_host, worker_port,
                                                  message)
                 self.change_worker_state(worker_host, worker_port, "busy")
+                self.change_worker_message(worker_host, worker_port, message)
             else:
                 self.remaining_messages.append(message)
         # Log map stage starts
         LOGGER.info("Manager:%s begin map stage", self.port)
-        self.is_free = False
+        self.state = "map"
+
+    def assign_reducer_task(self):
+        workers = self.get_ready_workers()
+        num_reducers = self.current_task.num_reducers
+        partitions = [self.reduce_input_paths[i::num_reducers]
+                      for i in range(num_reducers)]
+        self.remaining_messages = []
+        self.num_messages_left = len(partitions)
+        for i, partition in enumerate(partitions):
+            wi = i if i < len(workers) else 0
+            worker_host, worker_port = workers[wi]["host"], workers[wi]["port"]
+            message = {
+                "message_type": "new_reduce_task",
+                "task_id": i,
+                "executable": self.current_task.reducer_executable,
+                "input_paths": [_ for _ in partitions[i]],
+                "output_directory": self.current_task.output_directory,
+                "worker_host": worker_host,
+                "worker_port": worker_port,
+            }
+            if i < len(workers):
+                mapreduce.utils.tcp_send_message(worker_host, worker_port,
+                                                 message)
+                self.change_worker_state(worker_host, worker_port, "busy")
+                self.change_worker_message(worker_host, worker_port, message)
+            else:
+                self.remaining_messages.append(message)
+        LOGGER.info("Manager:%s begin reduce stage", self.port)
+
+    def get_worker_index(self, worker_host, worker_port):
+        for i, worker in enumerate(self.workers):
+            if worker["host"] == worker_host and worker["port"] == worker_port:
+                return i
 
     def change_worker_state(self, worker_host, worker_port, new_state):
-        for worker in self.workers:
-            if worker["host"] == worker_host and worker["port"] == worker_port:
-                worker["state"] = new_state
-                return
+        index = self.get_worker_index(worker_host, worker_port)
+        self.workers[index]["state"] = new_state
+
+    def change_worker_message(self, worker_host, worker_port, new_message):
+        index = self.get_worker_index(worker_host, worker_port)
+        self.workers[index]["message"] = new_message
 
     def finished(self, message_dict):
         self.change_worker_state(
             message_dict["worker_host"], message_dict["worker_port"], "ready"
         )
+        if self.state == "map":
+            self.reduce_input_paths.extend(message_dict["output_paths"])
+        self.num_messages_left -= 1
         # If there are partitions left
         if len(self.remaining_messages) > 0:
             message = self.remaining_messages.pop(0)
@@ -169,12 +226,34 @@ class Manager:
             message["worker_host"] = worker_host
             message["worker_port"] = worker_port
             mapreduce.utils.tcp_send_message(worker_host, worker_port, message)
+            self.change_worker_message(worker_host, worker_port, message)
             self.change_worker_state(worker_host, worker_port, "busy")
-        # Else
-        else:
+        elif self.num_messages_left != 0:
+            return
+        elif self.state == "map":
             LOGGER.info("Manager:%s end map stage", self.port)
+            self.state = "reduce"
+            self.assign_reducer_task()
+        elif self.state == "reduce":
+            LOGGER.info("Manager:%s end reduce stage", self.port)
+            self.state = "free"
+            self.reduce_input_paths = None
+            self.current_task = None
+            if self.get_ready_workers() and not self.job_queue.empty():
+                self.state = "map"
+                self.assign_mapper_task(self.job_queue.get())
 
-            # TODO: start reduce stage
+    def reassign_job(self):
+        print("reassigning dead worker's task")
+        workers = self.get_ready_workers()
+        if self.remaining_messages and workers:
+            message = self.remaining_messages.pop(0)
+            host, port = workers[0]["host"], workers[0]["port"]
+            message["worker_host"] = host
+            message["worker_port"] = port
+            mapreduce.utils.tcp_send_message(host, port, message)
+            self.change_worker_message(host, port, message)
+            self.change_worker_state(host, port, "busy")
 
     def new_manager_job(self, message_dict):
         input_directory = message_dict["input_directory"]
@@ -186,11 +265,11 @@ class Manager:
         temp_intermediate_dir = \
             self.tmp / f"job-{self.job_counter}" / "intermediate"
         temp_intermediate_dir.mkdir(parents=True, exist_ok=True)
+        pathlib.Path(output_directory).mkdir(parents=True, exist_ok=True)
         self.job_counter += 1
 
         manager_task = mapreduce.utils.ManagerTask(
             input_directory,
-            # TODO: what is the output directory here?
             output_directory,
             temp_intermediate_dir,
             mapper_executable,
@@ -198,15 +277,31 @@ class Manager:
             num_mappers,
             num_reducers,
         )
-        if self.get_ready_workers() and self.is_free:
-            self.is_free = False
-            self.assign_task(manager_task)
+        self.current_task = manager_task
+        if self.get_ready_workers() and self.state == "free":
+            self.state = "map"
+            self.assign_mapper_task(manager_task)
         else:
             self.job_queue.put(manager_task)
 
+    def heartbeat(self, message_dict):
+        host, port = message_dict["worker_host"], message_dict["worker_port"]
+        for worker in self.workers:
+            if worker["host"] == host and worker["port"] == port:
+                worker["time_since_last_beat"] = 0
+                return
 
-def fault_tolerance_thread(self):
-    pass
+    def fault_tolerance_thread(self):
+        while not self.signals["shutdown"]:
+            for worker in self.get_living_workers():
+                # TODO: When should i mark dead
+                if worker["time_since_last_beat"] >= 10:
+                    worker["state"] = "dead"
+                    self.remaining_messages.append(worker["message"])
+                    self.reassign_job()
+                else:
+                    worker["time_since_last_beat"] += 1
+            time.sleep(1)
 
 
 @click.command()

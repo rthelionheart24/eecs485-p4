@@ -46,7 +46,7 @@ def tcp_listen(host, port, dispatch):
                 dispatch[message_type](message_dict)
 
 
-def udp_listen(host, port, signals):
+def udp_listen(host, port, dispatch, signals):
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
 
         # Bind the UDP socket to the server
@@ -60,12 +60,14 @@ def udp_listen(host, port, signals):
         while not signals["shutdown"]:
             try:
                 message_bytes = sock.recv(4096)
-                # print(message_bytes)
             except socket.timeout:
                 continue
             message_str = message_bytes.decode("utf-8")
             message_dict = json.loads(message_str)
-            # print(message_dict)
+            message_type = message_dict["message_type"]
+            if message_type in dispatch:
+                print(message_type)
+                dispatch[message_type](message_dict)
 
 
 def tcp_send_message(host, port, message):
