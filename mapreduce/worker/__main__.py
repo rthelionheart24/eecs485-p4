@@ -111,6 +111,14 @@ class Worker:
     def map(self, message_dict):
         task_id = message_dict["task_id"]
         output_paths = []
+        num_partitions = message_dict["num_partitions"]
+        for i in range(num_partitions):
+            intermediate_file_name = (
+                f"{message_dict['output_directory']}/maptask"
+                f"{task_id:05}-part{i:05}"
+            )
+            output_paths.append(intermediate_file_name)
+        output_files = [open(_, "a") for _ in output_paths]
         for input_path in message_dict["input_paths"]:
             with open(input_path) as infile:
                 with subprocess.Popen(
@@ -125,16 +133,11 @@ class Worker:
                         key = key_value[0]  # [key, value]
                         hexdigest = hashlib.md5(key.encode("utf-8")).hexdigest()
                         keyhash = int(hexdigest, base=16)
-                        partition = keyhash % message_dict["num_partitions"]
-                        intermediate_file_name = (
-                            f"{message_dict['output_directory']}/maptask"
-                            f"{task_id:05}-part{partition:05}"
-                        )
-                        if intermediate_file_name not in output_paths:
-                            output_paths.append(intermediate_file_name)
-                        with open(intermediate_file_name, "a") as f:
-                            f.write(line)
-        self.send_finished_message(task_id, sorted(output_paths))
+                        partition = keyhash % num_partitions
+                        output_files[partition].write(line)
+        for file in output_files:
+            file.close()
+        self.send_finished_message(task_id, output_paths)
 
     def reduce(self, message_dict):
         # Sort each input file by line
@@ -162,6 +165,8 @@ class Worker:
                 # Pipe input to reduce_process
                 for line in infile:
                     reduce_process.stdin.write(line)
+        for file in files:
+            file.close()
         self.send_finished_message(task_id, [output_path])
 
     def send_finished_message(self, task_id, output_paths):
