@@ -46,8 +46,6 @@ def tcp_listen(host, port, dispatch):
                 message_dict = json.loads(message_str)
             except json.JSONDecodeError:
                 continue
-            print("message from", address[0], ": ", message_dict[
-                "message_type"])
             message_type = message_dict["message_type"]
             if message_type in dispatch:
                 dispatch[message_type](message_dict)
@@ -81,7 +79,6 @@ def udp_listen(host, port, dispatch, signals):
             message_dict = json.loads(message_str)
             message_type = message_dict["message_type"]
             if message_type in dispatch:
-                print(message_type)
                 dispatch[message_type](message_dict)
 
 

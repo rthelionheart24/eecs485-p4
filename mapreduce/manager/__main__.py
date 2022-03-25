@@ -291,7 +291,6 @@ class Manager:
 
     def reassign_job(self):
         """Reassign a dead worker's job to a ready worker."""
-        print("reassigning dead worker's task")
         workers = self.get_ready_workers()
         if self.remaining_messages and workers:
             message = self.remaining_messages.pop(0)
