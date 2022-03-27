@@ -1,0 +1,24 @@
+#!/bin/bash
+
+rm -rf correct.txt output.txt output tmp
+
+./bin/mapreduce start
+sleep 2
+
+# Change the input directory here
+input="input"
+mapreduce-submit \
+    --input tests/testdata/$input \
+    --output output \
+    --mapper tests/testdata/exec/wc_map.sh \
+    --reducer tests/testdata/exec/wc_reduce.sh \
+    --nmappers 2 \
+    --nreducers 2
+
+sleep 5
+./bin/mapreduce stop
+
+cat tests/testdata/$input/* | tests/testdata/exec/wc_map.sh | sort | \
+  tests/testdata/exec/wc_reduce.sh > correct.txt
+cat output/* | sort > output.txt
+diff output.txt correct.txt

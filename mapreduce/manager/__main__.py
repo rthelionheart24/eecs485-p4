@@ -284,7 +284,7 @@ class Manager:
             LOGGER.info("Manager:%s end reduce stage", self.info["port"])
             self.info["state"] = "free"
             self.reduce_input_paths = None
-            self.info["current_task"] = None
+            self.info["current_task"] = mapreduce.utils.ManagerTask()
             if self.get_ready_workers() and not self.job_queue.empty():
                 self.info["state"] = "map"
                 self.assign_mapper_task(self.job_queue.get())

@@ -1,0 +1,3 @@
+#!/bin/bash
+
+rm -rf correct.txt output.txt output tmp submit.tar.gz

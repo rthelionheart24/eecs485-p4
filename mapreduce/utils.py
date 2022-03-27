@@ -24,7 +24,7 @@ def tcp_listen(host, port, dispatch):
 
         while message_type != "shutdown":
             try:
-                clientsocket, address = sock.accept()
+                clientsocket, _ = sock.accept()
             except socket.timeout:
                 continue
 
