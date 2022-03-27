@@ -73,3 +73,5 @@ Icon
 # PyCharm
 .idea/
 *.http
+correct.txt
+output.txt
